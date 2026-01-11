@@ -1,0 +1,72 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "graphrelax"
+version = "0.1.0"
+description = "Combine LigandMPNN sequence design with AMBER relaxation"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+authors = [
+    {name = "GraphRelax Authors"}
+]
+keywords = ["protein", "design", "relaxation", "LigandMPNN", "OpenMM"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+]
+dependencies = [
+    "torch",
+    "numpy",
+    "prody",
+    "biopython",
+    "absl-py",
+    "ml-collections",
+    "dm-tree",
+]
+
+# Note: openmm and pdbfixer should be installed via conda:
+# conda install -c conda-forge openmm pdbfixer
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+]
+test = [
+    "pytest>=7.0",
+    "pytest-cov>=4.1",
+]
+
+[project.scripts]
+graphrelax = "graphrelax.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["graphrelax*"]
+
+[tool.setuptools.package-data]
+graphrelax = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v -m 'not integration'"
+markers = [
+    "integration: marks tests as integration tests (require OpenMM)",
+    "slow: marks tests as slow (skipped by default)",
+]
+
+[tool.black]
+line-length = 80
+
+[tool.isort]
+profile = "black"
+line_length = 80

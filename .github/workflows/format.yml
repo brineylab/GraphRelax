@@ -1,0 +1,36 @@
+name: Format
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  formatting:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install formatters
+        run: |
+          pip install black isort
+          npm install -g prettier
+
+      - name: Black check
+        run: black --check .
+
+      - name: isort check
+        run: isort --check-only .
+
+      - name: Prettier check
+        run: prettier --check "**/*.{md,json,yaml,yml}" --ignore-path .gitignore
