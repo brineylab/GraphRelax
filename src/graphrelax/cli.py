@@ -233,6 +233,33 @@ Examples:
         action="store_true",
         help="Keep water molecules in input (default: waters are removed)",
     )
+    preprocess_group.add_argument(
+        "--pre-idealize",
+        action="store_true",
+        help=(
+            "Idealize backbone geometry before processing. "
+            "Runs constrained minimization to fix local geometry while "
+            "preserving dihedral angles. By default, chain breaks are closed."
+        ),
+    )
+    preprocess_group.add_argument(
+        "--ignore-missing-residues",
+        action="store_true",
+        help=(
+            "Do not add missing residues from SEQRES during pre-idealization. "
+            "By default, missing N/C-terminal residues and internal loops are "
+            "added based on SEQRES records."
+        ),
+    )
+    preprocess_group.add_argument(
+        "--retain-chainbreaks",
+        action="store_true",
+        help=(
+            "Do not close chain breaks during pre-idealization. "
+            "By default, chain breaks are closed by treating all segments "
+            "as a single chain. Use this to preserve gaps."
+        ),
+    )
 
     # General options
     general_group = parser.add_argument_group("General options")
@@ -284,6 +311,7 @@ def main(args=None) -> int:
     # Import here to avoid slow startup from heavy dependencies
     from graphrelax.config import (
         DesignConfig,
+        IdealizeConfig,
         PipelineConfig,
         PipelineMode,
         RelaxConfig,
@@ -340,6 +368,12 @@ def main(args=None) -> int:
         split_chains_at_gaps=not opts.no_split_gaps,
     )
 
+    idealize_config = IdealizeConfig(
+        enabled=opts.pre_idealize,
+        add_missing_residues=not opts.ignore_missing_residues,
+        close_chainbreaks=not opts.retain_chainbreaks,
+    )
+
     pipeline_config = PipelineConfig(
         mode=mode,
         n_iterations=opts.n_iter,
@@ -349,6 +383,7 @@ def main(args=None) -> int:
         remove_waters=not opts.keep_waters,
         design=design_config,
         relax=relax_config,
+        idealize=idealize_config,
     )
 
     # Run pipeline

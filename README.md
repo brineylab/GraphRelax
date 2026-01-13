@@ -6,32 +6,37 @@ GraphRelax combines **LigandMPNN** (for sequence design and side-chain packing) 
 
 ## Installation
 
+GraphRelax requires pdbfixer, which is only available via conda-forge. We recommend using conda/mamba for installation.
+
+### From PyPI (Latest Release)
+
 ```bash
-# Install from PyPI
+# First, install pdbfixer via conda (required)
+conda install -c conda-forge pdbfixer
+
+# Then install graphrelax from PyPI
 pip install graphrelax
 ```
 
-LigandMPNN model weights (~40MB) are downloaded automatically on first run.
+This installs the latest stable release.
 
-### Development Installation
+### From Source (Latest Development Version)
 
 ```bash
+# First, install pdbfixer via conda (required)
+conda install -c conda-forge pdbfixer
+
 # Clone the repository
-git clone https://github.com/your-username/GraphRelax.git
+git clone https://github.com/delalamo/GraphRelax.git
 cd GraphRelax
 
 # Install in editable mode
 pip install -e .
 ```
 
-### Optional: Constrained Minimization
+This installs the latest development version with all recent changes.
 
-If you want to use `--constrained-minimization` mode (AlphaFold-style relaxation with position restraints and violation checking), you also need pdbfixer:
-
-```bash
-# pdbfixer is only available via conda-forge, not PyPI
-conda install -c conda-forge pdbfixer
-```
+LigandMPNN model weights (~40MB) are downloaded automatically on first run.
 
 ### Platform-specific Installation
 
@@ -84,17 +89,9 @@ Core dependencies (installed automatically via pip):
 - absl-py
 - ml-collections
 
-Optional (for `--constrained-minimization` only):
+Required (must be installed separately via conda):
 
 - pdbfixer (conda-forge only, not on PyPI)
-
-## Features
-
-- **FastRelax-like protocol**: Alternate between side-chain repacking and energy minimization
-- **Sequence design**: Full redesign or residue-specific control via Rosetta-style resfiles
-- **Multiple output modes**: Relax-only, repack-only, design-only, or combinations
-- **GPU acceleration**: Automatic GPU detection for both LigandMPNN and OpenMM
-- **Scorefile output**: Rosetta-compatible scorefiles with energy terms and sequence metrics
 
 ## Usage
 
@@ -183,6 +180,32 @@ graphrelax -i protein_with_ligand.pdb -o repacked.pdb \
 
 **Note:** If you attempt to use unconstrained minimization with a PDB containing ligands, GraphRelax will exit with an error message directing you to use `--constrained-minimization`.
 
+### Pre-Idealization
+
+GraphRelax can optionally idealize backbone geometry before processing. This is useful for structures with distorted bond lengths or angles (e.g., from homology modeling or low-resolution experimental data). The idealization step:
+
+1. Corrects backbone bond lengths and angles to ideal values
+2. Preserves phi/psi/omega dihedral angles
+3. Adds missing atoms and optionally missing residues from SEQRES
+4. Runs constrained minimization to relieve local strain
+5. By default, closes chain breaks (gaps) in the structure
+
+```bash
+# Idealize before relaxation
+graphrelax -i input.pdb -o relaxed.pdb --pre-idealize
+
+# Idealize but don't add missing residues from SEQRES
+graphrelax -i input.pdb -o relaxed.pdb --pre-idealize --ignore-missing-residues
+
+# Idealize but keep chain breaks as separate chains (don't close gaps)
+graphrelax -i input.pdb -o relaxed.pdb --pre-idealize --retain-chainbreaks
+
+# Combine with design
+graphrelax -i input.pdb -o designed.pdb --pre-idealize --design
+```
+
+**Note:** Pre-idealization requires pdbfixer (`conda install -c conda-forge pdbfixer`).
+
 ### Resfile Format
 
 GraphRelax supports Rosetta-style resfiles for residue-specific control:
@@ -254,6 +277,17 @@ Relaxation options:
 
 Input preprocessing:
   --keep-waters         Keep water molecules in input (default: removed)
+  --pre-idealize        Idealize backbone geometry before processing.
+                        Corrects bond lengths/angles while preserving
+                        dihedral angles. By default, chain breaks are closed.
+                        Requires pdbfixer.
+  --ignore-missing-residues
+                        Do not add missing residues from SEQRES during
+                        pre-idealization. By default, missing terminal and
+                        internal loop residues are added.
+  --retain-chainbreaks  Do not close chain breaks during pre-idealization.
+                        By default, chain breaks are closed by treating all
+                        segments as a single chain.
 
 Scoring:
   --scorefile FILE      Output scorefile with energy terms
@@ -277,7 +311,7 @@ SCORE:     -228.12       -228.12        11.8         44.2             22.8      
 
 ```python
 from graphrelax import Pipeline, PipelineConfig, PipelineMode
-from graphrelax.config import DesignConfig, RelaxConfig
+from graphrelax.config import DesignConfig, RelaxConfig, IdealizeConfig
 from pathlib import Path
 
 # Configure pipeline
@@ -292,6 +326,11 @@ config = PipelineConfig(
     relax=RelaxConfig(
         stiffness=10.0,
         constrained=False,  # Default: unconstrained minimization
+    ),
+    idealize=IdealizeConfig(
+        enabled=True,  # Enable pre-idealization
+        add_missing_residues=True,  # Add missing residues from SEQRES
+        close_chainbreaks=True,  # Close chain breaks (default)
     ),
 )
 
