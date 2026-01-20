@@ -5,7 +5,7 @@ Tests the weight downloading and path resolution functionality.
 
 import os
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -35,7 +35,9 @@ class TestGetWeightsDir:
     def test_env_override(self, tmp_path):
         """Test GRAPHRELAX_WEIGHTS_DIR environment variable override."""
         custom_dir = tmp_path / "custom_weights"
-        with patch.dict(os.environ, {"GRAPHRELAX_WEIGHTS_DIR": str(custom_dir)}):
+        with patch.dict(
+            os.environ, {"GRAPHRELAX_WEIGHTS_DIR": str(custom_dir)}
+        ):
             result = get_weights_dir()
             assert result == custom_dir
 
@@ -112,7 +114,9 @@ class TestWeightsExist:
         for f in WEIGHT_FILES:
             (weights_dir / f).touch()
 
-        with patch.dict(os.environ, {"GRAPHRELAX_WEIGHTS_DIR": str(weights_dir)}):
+        with patch.dict(
+            os.environ, {"GRAPHRELAX_WEIGHTS_DIR": str(weights_dir)}
+        ):
             assert weights_exist() is True
 
     def test_returns_false_when_missing_files(self, tmp_path):
@@ -122,14 +126,18 @@ class TestWeightsExist:
         # Only create first file
         (weights_dir / WEIGHT_FILES[0]).touch()
 
-        with patch.dict(os.environ, {"GRAPHRELAX_WEIGHTS_DIR": str(weights_dir)}):
+        with patch.dict(
+            os.environ, {"GRAPHRELAX_WEIGHTS_DIR": str(weights_dir)}
+        ):
             assert weights_exist() is False
 
     def test_returns_false_when_dir_not_exists(self, tmp_path):
         """Test returns False when weights directory doesn't exist."""
         weights_dir = tmp_path / "nonexistent"
 
-        with patch.dict(os.environ, {"GRAPHRELAX_WEIGHTS_DIR": str(weights_dir)}):
+        with patch.dict(
+            os.environ, {"GRAPHRELAX_WEIGHTS_DIR": str(weights_dir)}
+        ):
             assert weights_exist() is False
 
 
@@ -143,7 +151,9 @@ class TestDownloadWeights:
         for f in WEIGHT_FILES:
             (weights_dir / f).touch()
 
-        with patch.dict(os.environ, {"GRAPHRELAX_WEIGHTS_DIR": str(weights_dir)}):
+        with patch.dict(
+            os.environ, {"GRAPHRELAX_WEIGHTS_DIR": str(weights_dir)}
+        ):
             with patch("urllib.request.urlretrieve") as mock_retrieve:
                 download_weights(verbose=False)
                 mock_retrieve.assert_not_called()
@@ -153,7 +163,9 @@ class TestDownloadWeights:
         weights_dir = tmp_path / "new_weights_dir"
         assert not weights_dir.exists()
 
-        with patch.dict(os.environ, {"GRAPHRELAX_WEIGHTS_DIR": str(weights_dir)}):
+        with patch.dict(
+            os.environ, {"GRAPHRELAX_WEIGHTS_DIR": str(weights_dir)}
+        ):
             with patch("urllib.request.urlretrieve"):
                 download_weights(verbose=False)
                 assert weights_dir.exists()
@@ -162,7 +174,9 @@ class TestDownloadWeights:
         """Test that all weight files are downloaded."""
         weights_dir = tmp_path / "weights"
 
-        with patch.dict(os.environ, {"GRAPHRELAX_WEIGHTS_DIR": str(weights_dir)}):
+        with patch.dict(
+            os.environ, {"GRAPHRELAX_WEIGHTS_DIR": str(weights_dir)}
+        ):
             with patch("urllib.request.urlretrieve") as mock_retrieve:
                 download_weights(verbose=False)
 
@@ -181,7 +195,9 @@ class TestDownloadWeights:
         # Create first file only
         (weights_dir / WEIGHT_FILES[0]).touch()
 
-        with patch.dict(os.environ, {"GRAPHRELAX_WEIGHTS_DIR": str(weights_dir)}):
+        with patch.dict(
+            os.environ, {"GRAPHRELAX_WEIGHTS_DIR": str(weights_dir)}
+        ):
             with patch("urllib.request.urlretrieve") as mock_retrieve:
                 download_weights(verbose=False)
 
@@ -197,7 +213,9 @@ class TestDownloadWeights:
             Path(filepath).touch()
             raise Exception("Network error")
 
-        with patch.dict(os.environ, {"GRAPHRELAX_WEIGHTS_DIR": str(weights_dir)}):
+        with patch.dict(
+            os.environ, {"GRAPHRELAX_WEIGHTS_DIR": str(weights_dir)}
+        ):
             with patch("urllib.request.urlretrieve", side_effect=fake_download):
                 with pytest.raises(RuntimeError, match="Failed to download"):
                     download_weights(verbose=False)
@@ -209,9 +227,15 @@ class TestDownloadWeights:
         """Test that PermissionError is raised with helpful message."""
         weights_dir = tmp_path / "readonly" / "weights"
 
-        with patch.dict(os.environ, {"GRAPHRELAX_WEIGHTS_DIR": str(weights_dir)}):
-            with patch("pathlib.Path.mkdir", side_effect=PermissionError("denied")):
-                with pytest.raises(PermissionError, match="GRAPHRELAX_WEIGHTS_DIR"):
+        with patch.dict(
+            os.environ, {"GRAPHRELAX_WEIGHTS_DIR": str(weights_dir)}
+        ):
+            with patch(
+                "pathlib.Path.mkdir", side_effect=PermissionError("denied")
+            ):
+                with pytest.raises(
+                    PermissionError, match="GRAPHRELAX_WEIGHTS_DIR"
+                ):
                     download_weights(verbose=False)
 
 
@@ -222,7 +246,9 @@ class TestEnsureWeights:
         """Test that ensure_weights calls download_weights."""
         weights_dir = tmp_path / "weights"
 
-        with patch.dict(os.environ, {"GRAPHRELAX_WEIGHTS_DIR": str(weights_dir)}):
+        with patch.dict(
+            os.environ, {"GRAPHRELAX_WEIGHTS_DIR": str(weights_dir)}
+        ):
             with patch("graphrelax.weights.download_weights") as mock_download:
                 ensure_weights(verbose=False)
                 mock_download.assert_called_once_with(verbose=False)
@@ -282,7 +308,9 @@ class TestActualDownload:
         """Test the full download workflow with ensure_weights."""
         weights_dir = tmp_path / "weights"
 
-        with patch.dict(os.environ, {"GRAPHRELAX_WEIGHTS_DIR": str(weights_dir)}):
+        with patch.dict(
+            os.environ, {"GRAPHRELAX_WEIGHTS_DIR": str(weights_dir)}
+        ):
             # Verify weights don't exist initially
             assert not weights_exist()
 
