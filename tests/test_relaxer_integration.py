@@ -174,3 +174,65 @@ class TestRelaxerConfig:
         )
 
         assert relaxed_pdb is not None
+
+    def test_allbonds_constraint_level(self, small_peptide_pdb_string):
+        """Test relaxation with AllBonds constraint level (new default)."""
+        from graphrelax.relaxer import Relaxer
+
+        config = RelaxConfig(max_iterations=50, constraint_level="AllBonds")
+        relaxer = Relaxer(config)
+
+        relaxed_pdb, debug_info, _ = relaxer.relax(small_peptide_pdb_string)
+        assert relaxed_pdb is not None
+        assert "final_energy" in debug_info
+
+    def test_hbonds_constraint_level_backward_compat(
+        self, small_peptide_pdb_string
+    ):
+        """Test backward compatibility with HBonds constraint level."""
+        from graphrelax.relaxer import Relaxer
+
+        config = RelaxConfig(max_iterations=50, constraint_level="HBonds")
+        relaxer = Relaxer(config)
+
+        relaxed_pdb, debug_info, _ = relaxer.relax(small_peptide_pdb_string)
+        assert relaxed_pdb is not None
+        assert "final_energy" in debug_info
+
+    def test_none_constraint_level(self, small_peptide_pdb_string):
+        """Test relaxation with no constraints."""
+        from graphrelax.relaxer import Relaxer
+
+        config = RelaxConfig(max_iterations=50, constraint_level="None")
+        relaxer = Relaxer(config)
+
+        relaxed_pdb, debug_info, _ = relaxer.relax(small_peptide_pdb_string)
+        assert relaxed_pdb is not None
+
+
+@pytest.mark.integration
+class TestGeometryValidation:
+    """Tests for geometry validation integration with relaxer."""
+
+    def test_validation_report_in_debug_data(self, small_peptide_pdb_string):
+        """Test that geometry report is included in debug_data."""
+        from graphrelax.relaxer import Relaxer
+        from graphrelax.validation import GeometryReport
+
+        config = RelaxConfig(max_iterations=50, validate_geometry=True)
+        relaxer = Relaxer(config)
+
+        _, debug_info, _ = relaxer.relax(small_peptide_pdb_string)
+        assert "geometry_report" in debug_info
+        assert isinstance(debug_info["geometry_report"], GeometryReport)
+        assert "n_violations" in debug_info
+
+    def test_validation_disabled(self, small_peptide_pdb_string):
+        """Test that validation can be disabled."""
+        from graphrelax.relaxer import Relaxer
+
+        config = RelaxConfig(max_iterations=50, validate_geometry=False)
+        relaxer = Relaxer(config)
+
+        _, debug_info, _ = relaxer.relax(small_peptide_pdb_string)
+        assert "geometry_report" not in debug_info

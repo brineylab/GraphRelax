@@ -19,6 +19,7 @@ from graphrelax.chain_gaps import (
 )
 from graphrelax.config import RelaxConfig
 from graphrelax.idealize import extract_ligands, restore_ligands
+from graphrelax.validation import validate_geometry
 
 # Add vendored LigandMPNN to path for OpenFold imports
 # Must happen before importing from openfold
@@ -30,6 +31,13 @@ from openfold.np import protein  # noqa: E402
 from openfold.np.relax.relax import AmberRelaxation  # noqa: E402
 
 logger = logging.getLogger(__name__)
+
+CONSTRAINT_MAP = {
+    "None": None,
+    "HBonds": openmm_app.HBonds,
+    "AllBonds": openmm_app.AllBonds,
+    "HAngles": openmm_app.HAngles,
+}
 
 
 class Relaxer:
@@ -109,6 +117,16 @@ class Relaxer:
 
         # Restore ligands after relaxation
         relaxed_pdb = restore_ligands(relaxed_pdb, ligand_lines)
+
+        # Run post-minimization geometry validation
+        if self.config.validate_geometry:
+            report = validate_geometry(relaxed_pdb)
+            debug_info["geometry_report"] = report
+            debug_info["n_violations"] = report.violation_count
+            if report.has_violations:
+                logger.warning(
+                    f"Post-minimization geometry violations: {report.summary}"
+                )
 
         return relaxed_pdb, debug_info, violations
 
@@ -206,9 +224,12 @@ class Relaxer:
         modeller = openmm_app.Modeller(fixer.topology, fixer.positions)
         modeller.addHydrogens(force_field)
 
-        # Create system with HBonds constraints (standard for minimization)
+        # Create system with configurable constraints
+        constraint = CONSTRAINT_MAP.get(
+            self.config.constraint_level, openmm_app.AllBonds
+        )
         system = force_field.createSystem(
-            modeller.topology, constraints=openmm_app.HBonds
+            modeller.topology, constraints=constraint
         )
 
         # Create integrator and simulation
@@ -301,9 +322,12 @@ class Relaxer:
         modeller = openmm_app.Modeller(pdb.topology, pdb.positions)
         modeller.addHydrogens(force_field)
 
-        # Create system with constraints on hydrogen bonds
+        # Create system with configurable constraints
+        constraint = CONSTRAINT_MAP.get(
+            self.config.constraint_level, openmm_app.AllBonds
+        )
         system = force_field.createSystem(
-            modeller.topology, constraints=openmm_app.HBonds
+            modeller.topology, constraints=constraint
         )
 
         # Add position restraints if stiffness > 0
@@ -412,8 +436,11 @@ class Relaxer:
 
             # Create force field and system
             force_field = openmm_app.ForceField("amber99sb.xml")
+            constraint = CONSTRAINT_MAP.get(
+                self.config.constraint_level, openmm_app.AllBonds
+            )
             system = force_field.createSystem(
-                pdb.topology, constraints=openmm_app.HBonds
+                pdb.topology, constraints=constraint
             )
 
             # Create simulation

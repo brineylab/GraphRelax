@@ -216,6 +216,21 @@ Examples:
             "to prevent artificial gap closure during minimization."
         ),
     )
+    relax_group.add_argument(
+        "--constraint-level",
+        choices=["None", "HBonds", "AllBonds", "HAngles"],
+        default="AllBonds",
+        metavar="LEVEL",
+        help=(
+            "OpenMM constraint level for covalent bonds during minimization. "
+            "Choices: None, HBonds, AllBonds, HAngles (default: AllBonds)"
+        ),
+    )
+    relax_group.add_argument(
+        "--no-validate",
+        action="store_true",
+        help="Disable post-minimization geometry validation",
+    )
 
     # Scoring options
     score_group = parser.add_argument_group("Scoring options")
@@ -366,6 +381,8 @@ def main(args=None) -> int:
         max_iterations=opts.max_iterations,
         constrained=opts.constrained_minimization,
         split_chains_at_gaps=not opts.no_split_gaps,
+        constraint_level=opts.constraint_level,
+        validate_geometry=not opts.no_validate,
     )
 
     idealize_config = IdealizeConfig(

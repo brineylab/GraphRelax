@@ -42,6 +42,10 @@ class RelaxConfig:
     max_outer_iterations: int = 3  # Violation-fixing iterations
     constrained: bool = False  # Use constrained (AmberRelaxation) minimization
     split_chains_at_gaps: bool = True  # Split chains at gaps to prevent closure
+    constraint_level: str = (
+        "AllBonds"  # "None", "HBonds", "AllBonds", "HAngles"
+    )
+    validate_geometry: bool = True  # Run post-minimization geometry validation
     # GPU is auto-detected and used when available
 
 

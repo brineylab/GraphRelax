@@ -144,6 +144,21 @@ class Pipeline:
                     result["sequence"], result["native_sequence"]
                 )
 
+            # Add geometry validation metrics
+            if "geometry_report" in result:
+                report = result["geometry_report"]
+                score_dict["n_bond_violations"] = len(
+                    report.bond_length_violations
+                )
+                score_dict["n_angle_violations"] = len(
+                    report.bond_angle_violations
+                )
+                score_dict["n_clashes"] = len(report.steric_clashes)
+                score_dict["n_omega_violations"] = len(report.omega_violations)
+                score_dict["geometry_clean"] = (
+                    1 if not report.has_violations else 0
+                )
+
             score_dict["description"] = out_path.name
             all_scores.append(score_dict)
 
@@ -259,6 +274,12 @@ class Pipeline:
                     result["energy_breakdown"] = last_iter["energy_breakdown"]
                 if "ligandmpnn_loss" in last_iter:
                     result["ligandmpnn_loss"] = last_iter["ligandmpnn_loss"]
+                if "relax_info" in last_iter:
+                    relax_info = last_iter["relax_info"]
+                    if "geometry_report" in relax_info:
+                        result["geometry_report"] = relax_info[
+                            "geometry_report"
+                        ]
 
         finally:
             # Clean up temp file
