@@ -297,6 +297,54 @@ General:
   --seed N              Random seed for reproducibility
 ```
 
+### Interface Scoring
+
+GraphRelax includes interface analysis utilities for evaluating protein-protein interfaces (e.g., antibody-antigen complexes). These calculate binding energy (ddG), buried surface area, and shape complementarity, following Rosetta conventions.
+
+```bash
+# Analyze interface after relaxation (auto-detect chain pairs)
+graphrelax -i complex.pdb -o relaxed.pdb --analyze-interface
+
+# Specify chain pairs (e.g., antibody H+L chains vs antigen chain A)
+graphrelax -i complex.pdb -o relaxed.pdb --analyze-interface --interface-chains H:A,L:A
+
+# Skip the expensive binding energy calculation (only SASA and interface residues)
+graphrelax -i complex.pdb -o relaxed.pdb --analyze-interface --no-binding-energy
+
+# Include experimental shape complementarity score
+graphrelax -i complex.pdb -o relaxed.pdb --analyze-interface --calculate-shape-complementarity
+
+# Repack separated partners before computing ddG (Rosetta pack_separated mode)
+graphrelax -i complex.pdb -o relaxed.pdb --analyze-interface --pack-separated
+
+# Custom interface distance cutoff (default: 8.0 angstroms)
+graphrelax -i complex.pdb -o relaxed.pdb --analyze-interface --interface-distance-cutoff 10.0
+
+# Combine with design workflow
+graphrelax -i complex.pdb -o designed.pdb --design --analyze-interface --interface-chains H:A,L:A
+```
+
+#### Interface Analysis Metrics
+
+| Metric                    | Description                                                                                                                                                     |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Binding energy (ddG)**  | Energy difference between separated and bound states. Positive ddG indicates favorable binding (Rosetta convention). Uses AMBER14 with GBn2 implicit solvation. |
+| **Buried SASA**           | Solvent-accessible surface area buried upon complex formation (dSASA_int). Larger values indicate more extensive interfaces.                                    |
+| **Shape complementarity** | Simplified geometric fit score (0.0-1.0). Higher values indicate better surface complementarity. Experimental.                                                  |
+
+#### Interface Analysis Command-Line Options
+
+```
+  --analyze-interface           Enable interface analysis
+  --interface-distance-cutoff   Distance cutoff in angstroms (default: 8.0)
+  --interface-chains CHAINS     Chain pairs, e.g., 'H:A,L:A' (auto-detect if omitted)
+  --no-binding-energy           Skip ddG calculation (faster)
+  --calculate-shape-complementarity
+                                Calculate Sc score (experimental)
+  --pack-separated              Repack side chains on separated partners
+  --relax-separated             Backbone-minimize separated partners
+```
+
 ### Scorefile Output
 
 When `--scorefile` is specified, outputs a Rosetta-style scorefile:
@@ -347,6 +395,100 @@ for output in results["outputs"]:
     print(f"Output: {output['output_path']}")
     print(f"Sequence: {output['sequence']}")
     print(f"Final energy: {output.get('final_energy', 'N/A')}")
+```
+
+### Interface Analysis (Python API)
+
+Interface scoring can be used through the pipeline or as standalone functions.
+
+#### Via the Pipeline
+
+```python
+from graphrelax import Pipeline, PipelineConfig, PipelineMode, InterfaceConfig
+from graphrelax.config import RelaxConfig
+from pathlib import Path
+
+config = PipelineConfig(
+    mode=PipelineMode.RELAX,
+    n_iterations=5,
+    interface=InterfaceConfig(
+        enabled=True,
+        chain_pairs=[("H", "A"), ("L", "A")],  # or None to auto-detect
+        calculate_binding_energy=True,
+        calculate_sasa=True,
+        calculate_shape_complementarity=False,
+    ),
+)
+
+pipeline = Pipeline(config)
+results = pipeline.run(
+    input_pdb=Path("complex.pdb"),
+    output_pdb=Path("relaxed.pdb"),
+)
+
+for output in results["outputs"]:
+    analysis = output["interface_analysis"]
+
+    # Interface residues
+    info = analysis["interface_info"]
+    print(info.summary)
+    print(f"Interface residues: {info.n_interface_residues}")
+
+    # Binding energy
+    be = analysis["binding_energy"]
+    print(f"ddG: {be.binding_energy:.2f} kcal/mol")
+
+    # Buried surface area
+    sasa = analysis["sasa"]
+    print(f"Buried SASA: {sasa.buried_sasa:.1f} sq. angstroms")
+```
+
+#### Standalone Functions
+
+Each interface scoring component can be used independently:
+
+```python
+from pathlib import Path
+from graphrelax.interface import identify_interface_residues
+from graphrelax.surface_area import calculate_surface_area, calculate_shape_complementarity
+from graphrelax.binding_energy import calculate_binding_energy
+from graphrelax.relaxer import Relaxer
+from graphrelax.config import RelaxConfig
+
+pdb_string = Path("complex.pdb").read_text()
+
+# 1. Identify interface residues
+interface_info = identify_interface_residues(
+    pdb_string,
+    distance_cutoff=8.0,
+    chain_pairs=[("H", "A"), ("L", "A")],
+)
+print(interface_info.summary)
+
+# 2. Buried surface area
+sasa_result = calculate_surface_area(
+    pdb_string,
+    interface_info.interface_residues,
+    probe_radius=1.4,
+)
+print(f"Buried SASA: {sasa_result.buried_sasa:.1f} sq. angstroms")
+
+# 3. Shape complementarity (simplified)
+sc_result = calculate_shape_complementarity(
+    pdb_string,
+    interface_info.chain_pairs,
+    interface_info.interface_residues,
+)
+print(f"Sc: {sc_result.sc_score:.3f}")
+
+# 4. Binding energy (requires a Relaxer instance)
+relaxer = Relaxer(RelaxConfig(max_iterations=0))
+be_result = calculate_binding_energy(
+    pdb_string,
+    relaxer,
+    chain_pairs=interface_info.chain_pairs,
+)
+print(f"ddG: {be_result.binding_energy:.2f} kcal/mol")
 ```
 
 ## How It Works
