@@ -38,7 +38,8 @@ class TestInterfaceConfig:
         assert config.calculate_binding_energy is True
         assert config.calculate_sasa is True
         assert config.calculate_shape_complementarity is False
-        assert config.relax_separated_chains is True
+        assert config.pack_separated is False
+        assert config.relax_separated_chains is False
         assert config.sasa_probe_radius == 1.4
 
     def test_custom_values(self):
@@ -146,8 +147,8 @@ class TestCLIInterfaceArgs:
         )
         assert args.calculate_shape_complementarity is True
 
-    def test_no_relax_separated(self):
-        """Test --no-relax-separated flag."""
+    def test_pack_separated_flag(self):
+        """Test --pack-separated flag."""
         parser = create_parser()
         args = parser.parse_args(
             [
@@ -156,10 +157,25 @@ class TestCLIInterfaceArgs:
                 "-o",
                 "output.pdb",
                 "--analyze-interface",
-                "--no-relax-separated",
+                "--pack-separated",
             ]
         )
-        assert args.no_relax_separated is True
+        assert args.pack_separated is True
+
+    def test_relax_separated_flag(self):
+        """Test --relax-separated flag."""
+        parser = create_parser()
+        args = parser.parse_args(
+            [
+                "-i",
+                "input.pdb",
+                "-o",
+                "output.pdb",
+                "--analyze-interface",
+                "--relax-separated",
+            ]
+        )
+        assert args.relax_separated is True
 
     def test_default_interface_values(self):
         """Test default values for interface arguments."""
@@ -170,4 +186,5 @@ class TestCLIInterfaceArgs:
         assert args.interface_chains is None
         assert args.no_binding_energy is False
         assert args.calculate_shape_complementarity is False
-        assert args.no_relax_separated is False
+        assert args.pack_separated is False
+        assert args.relax_separated is False

@@ -309,11 +309,19 @@ Examples:
         help="Calculate shape complementarity score (Sc) - experimental",
     )
     interface_group.add_argument(
-        "--no-relax-separated",
+        "--pack-separated",
         action="store_true",
         help=(
-            "Don't relax separated chains for binding energy "
-            "(faster but less accurate)"
+            "Repack side chains on separated partners (no backbone "
+            "minimization), matching Rosetta InterfaceAnalyzer pack_separated"
+        ),
+    )
+    interface_group.add_argument(
+        "--relax-separated",
+        action="store_true",
+        help=(
+            "Backbone-minimize separated partners after repacking "
+            "(disabled by default to match Rosetta rigid-body separation)"
         ),
     )
 
@@ -461,7 +469,8 @@ def main(args=None) -> int:
         calculate_binding_energy=not opts.no_binding_energy,
         calculate_sasa=True,
         calculate_shape_complementarity=opts.calculate_shape_complementarity,
-        relax_separated_chains=not opts.no_relax_separated,
+        pack_separated=opts.pack_separated,
+        relax_separated_chains=opts.relax_separated,
     )
 
     pipeline_config = PipelineConfig(

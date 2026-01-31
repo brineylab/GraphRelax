@@ -162,18 +162,19 @@ class Pipeline:
 
                 if "binding_energy" in analysis:
                     be = analysis["binding_energy"]
-                    score_dict["binding_energy"] = be.binding_energy
+                    # Rosetta-equivalent naming
+                    score_dict["dG_separated"] = be.binding_energy
                     score_dict["complex_energy"] = be.complex_energy
                     score_dict["interface_energy"] = be.interface_energy or 0.0
 
                 if "sasa" in analysis:
                     sasa = analysis["sasa"]
-                    score_dict["buried_sasa"] = sasa.buried_sasa
+                    score_dict["dSASA_int"] = sasa.buried_sasa
                     score_dict["complex_sasa"] = sasa.complex_sasa
 
                 if "shape_complementarity" in analysis:
                     sc = analysis["shape_complementarity"]
-                    score_dict["shape_complementarity"] = sc.sc_score
+                    score_dict["Sc"] = sc.sc_score
                     score_dict["interface_area"] = sc.interface_area
 
             score_dict["description"] = out_path.name
@@ -422,14 +423,16 @@ class Pipeline:
                 self.relaxer,
                 chain_pairs=interface_info.chain_pairs,
                 distance_cutoff=cfg.distance_cutoff,
+                pack_separated=cfg.pack_separated,
                 relax_separated=cfg.relax_separated_chains,
+                repacker=self.designer if cfg.pack_separated else None,
             )
             results["binding_energy"] = binding_result
             logger.info(
                 f"  ddG = {binding_result.binding_energy:.2f} kcal/mol "
-                f"(Complex: {binding_result.complex_energy:.2f}, "
-                f"Separated: "
-                f"{sum(binding_result.separated_energies.values()):.2f})"
+                f"(Separated: "
+                f"{sum(binding_result.separated_energies.values()):.2f}, "
+                f"Complex: {binding_result.complex_energy:.2f})"
             )
 
         # Step 3: Calculate surface area

@@ -270,11 +270,11 @@ class TestBindingEnergyWithRealStructure:
         assert len(result.separated_energies) == 2
         assert len(result.interface_residues) > 0
 
-    def test_negative_ddg_known_high_affinity_binder(
+    def test_positive_ddg_rosetta_convention(
         self, relaxed_1vfb_pdb_string, relaxer
     ):
-        """ddG should be negative for 1VFB, a known high-affinity
-        antibody-antigen interaction, when GBn2 solvation is enabled."""
+        """ddG (separated - complex) should be positive for 1VFB under
+        Rosetta InterfaceAnalyzer convention."""
         result = calculate_binding_energy(
             relaxed_1vfb_pdb_string,
             relaxer,
@@ -282,8 +282,9 @@ class TestBindingEnergyWithRealStructure:
             relax_separated=False,
         )
         assert math.isfinite(result.binding_energy)
-        assert result.binding_energy < 0, (
-            "ddG should be negative for high-affinity binder, "
+        assert result.binding_energy > 0, (
+            "ddG should be positive for high-affinity binder in "
+            "separated-minus-complex convention, "
             f"got {result.binding_energy:.2f}"
         )
 
@@ -468,14 +469,14 @@ class TestPipelineInterfaceAnalysis:
 
         assert scorefile.exists()
         contents = scorefile.read_text()
-        assert "binding_energy" in contents
-        assert "buried_sasa" in contents
+        assert "dG_separated" in contents
+        assert "dSASA_int" in contents
         assert "n_interface_residues" in contents
 
-    def test_pipeline_binding_energy_negative(
+    def test_pipeline_binding_energy_positive(
         self, antibody_antigen_pdb, tmp_path
     ):
-        """The ddG from the pipeline result should be negative for this
+        """The ddG from the pipeline result should be positive for this
         known high-affinity antibody-antigen interaction with GBn2 solvation."""
         from graphrelax.pipeline import Pipeline
 
@@ -501,7 +502,7 @@ class TestPipelineInterfaceAnalysis:
 
         be = result["outputs"][0]["interface_analysis"]["binding_energy"]
         assert math.isfinite(be.binding_energy)
-        assert be.binding_energy < 0, (
-            "Pipeline ddG should be negative for "
+        assert be.binding_energy > 0, (
+            "Pipeline ddG should be positive (separated - complex) for "
             f"high-affinity binder, got {be.binding_energy:.2f}"
         )

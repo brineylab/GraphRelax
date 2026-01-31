@@ -2,6 +2,8 @@
 
 import io
 import logging
+import tempfile
+from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Dict, List, Tuple
 
@@ -13,15 +15,25 @@ from graphrelax.interface import InterfaceResidue, _get_protein_chains
 
 logger = logging.getLogger(__name__)
 
+try:  # Optional Rosetta-like SASA using FreeSASA
+    import freesasa
+
+    _HAS_FREESASA = True
+except Exception:  # pragma: no cover - optional dependency
+    _HAS_FREESASA = False
+
 
 @dataclass
 class SurfaceAreaResult:
     """Surface area calculations for interface analysis."""
 
     complex_sasa: float = 0.0
-    chain_sasa: Dict[str, float] = field(default_factory=dict)
-    buried_sasa: float = 0.0
-    interface_residue_sasa: Dict[str, float] = field(default_factory=dict)
+    chain_sasa: Dict[str, float] = field(default_factory=dict)  # unbound chains
+    buried_sasa: float = 0.0  # dSASA_int (Rosetta naming)
+    interface_residue_sasa: Dict[str, float] = field(default_factory=dict)  # bound
+    interface_residue_delta_sasa: Dict[str, float] = field(
+        default_factory=dict
+    )  # unbound - bound
 
 
 @dataclass
@@ -50,6 +62,45 @@ def _compute_structure_sasa(
     sr = ShrakeRupley(probe_radius=probe_radius)
     sr.compute(structure, level="S")
     return structure.sasa
+
+
+def _compute_sasa_freesasa(
+    pdb_string: str,
+) -> Tuple[float, Dict[str, float], Dict[str, float]]:
+    """
+    Compute SASA using FreeSASA for closer alignment with Rosetta.
+
+    Returns:
+        total_sasa, chain_sasa, residue_sasa
+    """
+    with tempfile.NamedTemporaryFile(suffix=".pdb", delete=False, mode="w") as tmp:
+        tmp.write(pdb_string)
+        tmp_path = tmp.name
+
+    try:
+        structure = freesasa.Structure(tmp_path)
+        result = freesasa.calc(structure)
+
+        chain_sasa: Dict[str, float] = defaultdict(float)
+        residue_sasa: Dict[str, float] = defaultdict(float)
+
+        for i in range(structure.nAtoms()):
+            area = result.atomArea(i)
+            chain = structure.chainLabel(i)
+            resnum = structure.residueNumber(i)
+            icode = getattr(structure, "residueInsertionCode", lambda *_: "")(i)  # type: ignore
+            key = f"{chain}{resnum}{icode}"
+            chain_sasa[chain] += area
+            residue_sasa[key] += area
+
+        return result.totalArea(), dict(chain_sasa), dict(residue_sasa)
+    finally:
+        try:
+            import os
+
+            os.unlink(tmp_path)
+        except OSError:
+            pass
 
 
 def _compute_residue_sasa(
@@ -108,25 +159,37 @@ def calculate_surface_area(
     parser = PDBParser(QUIET=True)
     structure = parser.get_structure("complex", io.StringIO(pdb_string))
 
-    # Compute complex SASA
-    complex_sasa = _compute_structure_sasa(structure, probe_radius)
+    # Choose SASA backend
+    if _HAS_FREESASA:
+        complex_sasa, _, complex_res_sasa = _compute_sasa_freesasa(pdb_string)
+    else:
+        complex_sasa = _compute_structure_sasa(structure, probe_radius)
+        complex_res_sasa = _compute_residue_sasa(structure, probe_radius)
+        protein_chains = _get_protein_chains(structure, exclude_ligands=False)
+        for chain_id, _residues in protein_chains.items():
+            chain_pdb_lines = []
+            for line in pdb_string.splitlines():
+                if line.startswith(("ATOM", "HETATM")):
+                    if len(line) > 21 and line[21] == chain_id:
+                        chain_pdb_lines.append(line)
+                elif line.startswith(("END", "TER")):
+                    chain_pdb_lines.append(line)
+            chain_pdb_str = "\n".join(chain_pdb_lines)
+            if not chain_pdb_str.rstrip().endswith("END"):
+                chain_pdb_str += "\nEND\n"
+            chain_structure = parser.get_structure(
+                f"chain_{chain_id}", io.StringIO(chain_pdb_str)
+            )
+            complex_chain_sasa[chain_id] = _compute_structure_sasa(
+                chain_structure, probe_radius
+            )
 
-    # Compute per-residue SASA for interface residues
-    residue_sasa = _compute_residue_sasa(structure, probe_radius)
+    # Compute per-chain unbound SASA and per-residue unbound SASA
+    chain_sasa_unbound: Dict[str, float] = {}
+    residue_sasa_unbound: Dict[str, float] = {}
 
-    # Track interface residue SASA in complex
-    interface_residue_sasa = {}
-    for ir in interface_residues:
-        key = f"{ir.chain_id}{ir.residue_number}{ir.insertion_code}"
-        if key in residue_sasa:
-            interface_residue_sasa[key] = residue_sasa[key]
-
-    # Compute per-chain SASA by extracting each chain separately
-    protein_chains = _get_protein_chains(structure, exclude_ligands=True)
-    chain_sasa = {}
-
+    protein_chains = _get_protein_chains(structure, exclude_ligands=False)
     for chain_id, _residues in protein_chains.items():
-        # Build a temporary structure with just this chain
         chain_pdb_lines = []
         for line in pdb_string.splitlines():
             if line.startswith(("ATOM", "HETATM")):
@@ -134,33 +197,48 @@ def calculate_surface_area(
                     chain_pdb_lines.append(line)
             elif line.startswith(("END", "TER")):
                 chain_pdb_lines.append(line)
-
         chain_pdb_str = "\n".join(chain_pdb_lines)
         if not chain_pdb_str.rstrip().endswith("END"):
             chain_pdb_str += "\nEND\n"
 
-        chain_structure = parser.get_structure(
-            f"chain_{chain_id}", io.StringIO(chain_pdb_str)
-        )
-        chain_sasa[chain_id] = _compute_structure_sasa(
-            chain_structure, probe_radius
-        )
+        if _HAS_FREESASA:
+            total, _, res_sasa = _compute_sasa_freesasa(chain_pdb_str)
+        else:
+            chain_structure = parser.get_structure(
+                f"chain_{chain_id}", io.StringIO(chain_pdb_str)
+            )
+            total = _compute_structure_sasa(chain_structure, probe_radius)
+            res_sasa = _compute_residue_sasa(chain_structure, probe_radius)
 
-    # Buried SASA = sum of individual chain SASAs - complex SASA
-    total_chain_sasa = sum(chain_sasa.values())
+        chain_sasa_unbound[chain_id] = total
+        residue_sasa_unbound.update(res_sasa)
+
+    # Buried SASA = sum(unbound chains) - complex SASA (Rosetta dSASA_int)
+    total_chain_sasa = sum(chain_sasa_unbound.values())
     buried_sasa = total_chain_sasa - complex_sasa
 
+    # Interface residue SASA (bound) and burial (unbound - bound)
+    interface_residue_sasa = {}
+    interface_residue_delta_sasa = {}
+    for ir in interface_residues:
+        key = f"{ir.chain_id}{ir.residue_number}{ir.insertion_code}"
+        bound_val = complex_res_sasa.get(key, 0.0)
+        unbound_val = residue_sasa_unbound.get(key, 0.0)
+        interface_residue_sasa[key] = bound_val
+        interface_residue_delta_sasa[key] = max(0.0, unbound_val - bound_val)
+
     logger.info(
-        f"  SASA: complex={complex_sasa:.1f}, "
+        f"  SASA (FreeSASA={_HAS_FREESASA}): complex={complex_sasa:.1f}, "
         f"chains_total={total_chain_sasa:.1f}, "
-        f"buried={buried_sasa:.1f} sq. angstroms"
+        f"dSASA_int={buried_sasa:.1f} sq. angstroms"
     )
 
     return SurfaceAreaResult(
         complex_sasa=complex_sasa,
-        chain_sasa=chain_sasa,
+        chain_sasa=chain_sasa_unbound,
         buried_sasa=buried_sasa,
         interface_residue_sasa=interface_residue_sasa,
+        interface_residue_delta_sasa=interface_residue_delta_sasa,
     )
 
 

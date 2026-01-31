@@ -28,6 +28,7 @@ dependencies = [
     "numpy<2",  # PyTorch <2.5 is incompatible with NumPy 2.x
     "prody",
     "biopython",
+    "freesasa",
     "absl-py",
     "ml-collections",
     "dm-tree",

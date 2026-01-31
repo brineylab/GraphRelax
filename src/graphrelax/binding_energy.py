@@ -4,12 +4,10 @@ import io
 import logging
 import tempfile
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from Bio.PDB import PDBIO, PDBParser, Select
 
-from graphrelax.idealize import extract_ligands, restore_ligands
 from graphrelax.interface import InterfaceResidue, identify_interface_residues
 
 logger = logging.getLogger(__name__)
@@ -35,6 +33,24 @@ class _ChainSelector(Select):
 
     def accept_chain(self, chain):
         return chain.id in self.chain_ids
+
+
+def _repack_with_designer(pdb_string: str, designer: "Designer") -> str:  # noqa: F821
+    """Run LigandMPNN repacking on a PDB string and return the repacked PDB."""
+    import tempfile
+    from pathlib import Path
+
+    with tempfile.NamedTemporaryFile(suffix=".pdb", delete=False, mode="w") as tmp:
+        tmp.write(pdb_string)
+        tmp_path = Path(tmp.name)
+
+    try:
+        repack_result = designer.repack(tmp_path)
+        repacked = designer.result_to_pdb_string(repack_result)
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+    return repacked
 
 
 def extract_chain(pdb_string: str, chain_ids: list) -> str:
@@ -106,7 +122,9 @@ def calculate_binding_energy(
     relaxer: "Relaxer",  # noqa: F821
     chain_pairs: Optional[List[Tuple[str, str]]] = None,
     distance_cutoff: float = 8.0,
-    relax_separated: bool = True,
+    pack_separated: bool = False,
+    relax_separated: bool = False,
+    repacker: Optional["Designer"] = None,  # noqa: F821
 ) -> BindingEnergyResult:
     """
     Calculate binding energy by comparing complex and separated chain energies.
@@ -115,8 +133,8 @@ def calculate_binding_energy(
     1. Get energy of the complex (already relaxed)
     2. Identify interface residues
     3. Extract each side of the interface to separate PDBs
-    4. Optionally relax separated chains
-    5. Calculate ddG = E_complex - sum(E_separated)
+    4. Optionally repack side chains (pack_separated) and/or relax separated chains
+    5. Calculate ddG = sum(E_separated) - E_complex (Rosetta convention)
 
     Args:
         pdb_string: Complex PDB structure (should already be relaxed)
@@ -128,7 +146,7 @@ def calculate_binding_energy(
     Returns:
         BindingEnergyResult with energies and interface info
     """
-    # Step 1: Get complex energy
+    # Step 1: Get complex energy (bound state)
     logger.info("  Computing complex energy...")
     complex_breakdown = relaxer.get_energy_breakdown(pdb_string)
     complex_energy = complex_breakdown.get("total_energy", 0.0)
@@ -154,19 +172,26 @@ def calculate_binding_energy(
         + ", ".join(f"[{'+'.join(g)}]" for g in chain_groups)
     )
 
-    # Extract ligands first - they should not be included in separated chains
-    protein_pdb, ligand_lines = extract_ligands(pdb_string)
-
     # Step 4: Compute separated chain energies
     separated_energies = {}
     for group in chain_groups:
         group_label = "+".join(group)
         logger.info(f"  Computing energy for chain(s) {group_label}...")
 
-        chain_pdb = extract_chain(protein_pdb, group)
+        chain_pdb = extract_chain(pdb_string, group)
+
+        # Rosetta default: rigid-body separation (no repack/min)
+        if pack_separated and repacker is not None:
+            try:
+                chain_pdb = _repack_with_designer(chain_pdb, repacker)
+                logger.info(f"    Repacked chain(s) {group_label}")
+            except Exception as e:
+                logger.warning(
+                    f"    Failed to repack chain(s) {group_label}: {e}"
+                )
 
         if relax_separated:
-            # Relax the separated chain(s)
+            # Optional separated minimization (backbone allowed)
             try:
                 relaxed_pdb, relax_info, _ = relaxer.relax(chain_pdb)
                 chain_breakdown = relaxer.get_energy_breakdown(relaxed_pdb)
@@ -180,7 +205,6 @@ def calculate_binding_energy(
                 logger.warning(
                     f"    Failed to relax chain(s) {group_label}: {e}"
                 )
-                # Fall back to unrelaxed energy
                 chain_breakdown = relaxer.get_energy_breakdown(chain_pdb)
                 chain_energy = chain_breakdown.get("total_energy", 0.0)
         else:
@@ -189,14 +213,14 @@ def calculate_binding_energy(
 
         separated_energies[group_label] = chain_energy
 
-    # Step 5: Calculate ddG
+    # Step 5: Calculate ddG (Rosetta convention: separated - complex)
     total_separated = sum(separated_energies.values())
-    binding_energy = complex_energy - total_separated
+    binding_energy = total_separated - complex_energy
 
     logger.info(
         f"  ddG = {binding_energy:.2f} kcal/mol "
-        f"(complex: {complex_energy:.2f}, "
-        f"separated: {total_separated:.2f})"
+        f"(separated: {total_separated:.2f}, "
+        f"complex: {complex_energy:.2f})"
     )
 
     return BindingEnergyResult(

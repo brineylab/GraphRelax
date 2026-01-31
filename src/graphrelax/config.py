@@ -71,7 +71,9 @@ class InterfaceConfig:
     calculate_shape_complementarity: bool = (
         False  # Simplified Sc (experimental)
     )
-    relax_separated_chains: bool = True  # Relax separated chains for ddG
+    # Rosetta InterfaceAnalyzer default: rigid-body separation (no repack/min)
+    pack_separated: bool = False  # Repack side chains on separated partners
+    relax_separated_chains: bool = False  # Backbone minimization of separated chains
     sasa_probe_radius: float = 1.4  # Probe radius for SASA (A)
 
 
