@@ -2,6 +2,7 @@
 
 import io
 import logging
+import os
 import tempfile
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -30,7 +31,9 @@ class SurfaceAreaResult:
     complex_sasa: float = 0.0
     chain_sasa: Dict[str, float] = field(default_factory=dict)  # unbound chains
     buried_sasa: float = 0.0  # dSASA_int (Rosetta naming)
-    interface_residue_sasa: Dict[str, float] = field(default_factory=dict)  # bound
+    interface_residue_sasa: Dict[str, float] = field(
+        default_factory=dict
+    )  # bound
     interface_residue_delta_sasa: Dict[str, float] = field(
         default_factory=dict
     )  # unbound - bound
@@ -73,7 +76,9 @@ def _compute_sasa_freesasa(
     Returns:
         total_sasa, chain_sasa, residue_sasa
     """
-    with tempfile.NamedTemporaryFile(suffix=".pdb", delete=False, mode="w") as tmp:
+    with tempfile.NamedTemporaryFile(
+        suffix=".pdb", delete=False, mode="w"
+    ) as tmp:
         tmp.write(pdb_string)
         tmp_path = tmp.name
 
@@ -88,7 +93,10 @@ def _compute_sasa_freesasa(
             area = result.atomArea(i)
             chain = structure.chainLabel(i)
             resnum = structure.residueNumber(i)
-            icode = getattr(structure, "residueInsertionCode", lambda *_: "")(i)  # type: ignore
+            _get_icode = getattr(
+                structure, "residueInsertionCode", lambda *_: ""
+            )
+            icode = _get_icode(i)  # type: ignore
             key = f"{chain}{resnum}{icode}"
             chain_sasa[chain] += area
             residue_sasa[key] += area
@@ -96,8 +104,6 @@ def _compute_sasa_freesasa(
         return result.totalArea(), dict(chain_sasa), dict(residue_sasa)
     finally:
         try:
-            import os
-
             os.unlink(tmp_path)
         except OSError:
             pass
@@ -165,6 +171,7 @@ def calculate_surface_area(
     else:
         complex_sasa = _compute_structure_sasa(structure, probe_radius)
         complex_res_sasa = _compute_residue_sasa(structure, probe_radius)
+        complex_chain_sasa = {}
         protein_chains = _get_protein_chains(structure, exclude_ligands=False)
         for chain_id, _residues in protein_chains.items():
             chain_pdb_lines = []
