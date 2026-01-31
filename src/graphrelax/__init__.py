@@ -35,6 +35,10 @@ def __getattr__(name):
         from graphrelax.config import RelaxConfig
 
         return RelaxConfig
+    elif name == "InterfaceConfig":
+        from graphrelax.config import InterfaceConfig
+
+        return InterfaceConfig
     elif name == "ResidueMode":
         from graphrelax.resfile import ResidueMode
 
@@ -59,6 +63,7 @@ __all__ = [
     "PipelineConfig",
     "DesignConfig",
     "RelaxConfig",
+    "InterfaceConfig",
     "ResidueMode",
     "ResidueSpec",
     "DesignSpec",

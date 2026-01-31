@@ -261,6 +261,57 @@ Examples:
         ),
     )
 
+    # Interface analysis options
+    interface_group = parser.add_argument_group(
+        "Interface analysis",
+        "Options for antibody-antigen and protein-protein interface analysis",
+    )
+    interface_group.add_argument(
+        "--analyze-interface",
+        action="store_true",
+        help="Enable interface analysis (binding energy, SASA, etc.)",
+    )
+    interface_group.add_argument(
+        "--interface-distance-cutoff",
+        type=float,
+        default=8.0,
+        metavar="DIST",
+        help=(
+            "Distance cutoff (angstroms) for interface "
+            "residues (default: 8.0)"
+        ),
+    )
+    interface_group.add_argument(
+        "--interface-chains",
+        type=str,
+        metavar="CHAINS",
+        help=(
+            "Comma-separated chain pairs to analyze, e.g., 'H:L,H:A' "
+            "(auto-detect all pairs if not specified)"
+        ),
+    )
+    interface_group.add_argument(
+        "--no-binding-energy",
+        action="store_true",
+        help=(
+            "Skip binding energy calculation "
+            "(faster, only identify interface)"
+        ),
+    )
+    interface_group.add_argument(
+        "--calculate-shape-complementarity",
+        action="store_true",
+        help="Calculate shape complementarity score (Sc) - experimental",
+    )
+    interface_group.add_argument(
+        "--no-relax-separated",
+        action="store_true",
+        help=(
+            "Don't relax separated chains for binding energy "
+            "(faster but less accurate)"
+        ),
+    )
+
     # General options
     general_group = parser.add_argument_group("General options")
     general_group.add_argument(
@@ -277,6 +328,24 @@ Examples:
     )
 
     return parser
+
+
+def _parse_chain_pairs(chain_string: str) -> list:
+    """
+    Parse chain pair specification string.
+
+    Args:
+        chain_string: Comma-separated chain pairs, e.g., 'H:L,H:A'
+
+    Returns:
+        List of (chain_a, chain_b) tuples
+    """
+    pairs = []
+    for pair in chain_string.split(","):
+        if ":" in pair:
+            a, b = pair.strip().split(":")
+            pairs.append((a.strip(), b.strip()))
+    return pairs
 
 
 def main(args=None) -> int:
@@ -312,6 +381,7 @@ def main(args=None) -> int:
     from graphrelax.config import (
         DesignConfig,
         IdealizeConfig,
+        InterfaceConfig,
         PipelineConfig,
         PipelineMode,
         RelaxConfig,
@@ -374,6 +444,20 @@ def main(args=None) -> int:
         close_chainbreaks=not opts.retain_chainbreaks,
     )
 
+    interface_config = InterfaceConfig(
+        enabled=opts.analyze_interface,
+        distance_cutoff=opts.interface_distance_cutoff,
+        chain_pairs=(
+            _parse_chain_pairs(opts.interface_chains)
+            if opts.interface_chains
+            else None
+        ),
+        calculate_binding_energy=not opts.no_binding_energy,
+        calculate_sasa=True,
+        calculate_shape_complementarity=opts.calculate_shape_complementarity,
+        relax_separated_chains=not opts.no_relax_separated,
+    )
+
     pipeline_config = PipelineConfig(
         mode=mode,
         n_iterations=opts.n_iter,
@@ -384,6 +468,7 @@ def main(args=None) -> int:
         design=design_config,
         relax=relax_config,
         idealize=idealize_config,
+        interface=interface_config,
     )
 
     # Run pipeline

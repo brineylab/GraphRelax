@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Literal, Optional
+from typing import List, Literal, Optional, Tuple
 
 
 class PipelineMode(Enum):
@@ -57,6 +57,22 @@ class IdealizeConfig:
 
 
 @dataclass
+class InterfaceConfig:
+    """Configuration for interface analysis."""
+
+    enabled: bool = False  # Enable interface analysis
+    distance_cutoff: float = 8.0  # Distance cutoff (A) for interface residues
+    chain_pairs: Optional[List[Tuple[str, str]]] = None  # Auto-detect if None
+    calculate_binding_energy: bool = True  # Calculate ddG via chain separation
+    calculate_sasa: bool = True  # Calculate buried surface area
+    calculate_shape_complementarity: bool = (
+        False  # Simplified Sc (experimental)
+    )
+    relax_separated_chains: bool = True  # Relax separated chains for ddG
+    sasa_probe_radius: float = 1.4  # Probe radius for SASA (A)
+
+
+@dataclass
 class PipelineConfig:
     """Configuration for the full pipeline."""
 
@@ -69,3 +85,4 @@ class PipelineConfig:
     design: DesignConfig = field(default_factory=DesignConfig)
     relax: RelaxConfig = field(default_factory=RelaxConfig)
     idealize: IdealizeConfig = field(default_factory=IdealizeConfig)
+    interface: InterfaceConfig = field(default_factory=InterfaceConfig)

@@ -5,9 +5,11 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
+from graphrelax.binding_energy import calculate_binding_energy
 from graphrelax.config import PipelineConfig, PipelineMode
 from graphrelax.designer import Designer
 from graphrelax.idealize import idealize_structure
+from graphrelax.interface import identify_interface_residues
 from graphrelax.relaxer import Relaxer
 from graphrelax.resfile import DesignSpec, ResfileParser
 from graphrelax.structure_io import (
@@ -16,6 +18,10 @@ from graphrelax.structure_io import (
     detect_format,
     ensure_pdb_format,
     get_output_format,
+)
+from graphrelax.surface_area import (
+    calculate_shape_complementarity,
+    calculate_surface_area,
 )
 from graphrelax.utils import (
     compute_ligandmpnn_score,
@@ -144,6 +150,32 @@ class Pipeline:
                     result["sequence"], result["native_sequence"]
                 )
 
+            # Add interface metrics if available
+            if "interface_analysis" in result:
+                analysis = result["interface_analysis"]
+
+                if "interface_info" in analysis:
+                    info = analysis["interface_info"]
+                    score_dict["n_interface_residues"] = (
+                        info.n_interface_residues
+                    )
+
+                if "binding_energy" in analysis:
+                    be = analysis["binding_energy"]
+                    score_dict["binding_energy"] = be.binding_energy
+                    score_dict["complex_energy"] = be.complex_energy
+                    score_dict["interface_energy"] = be.interface_energy or 0.0
+
+                if "sasa" in analysis:
+                    sasa = analysis["sasa"]
+                    score_dict["buried_sasa"] = sasa.buried_sasa
+                    score_dict["complex_sasa"] = sasa.complex_sasa
+
+                if "shape_complementarity" in analysis:
+                    sc = analysis["shape_complementarity"]
+                    score_dict["shape_complementarity"] = sc.sc_score
+                    score_dict["interface_area"] = sc.interface_area
+
             score_dict["description"] = out_path.name
             all_scores.append(score_dict)
 
@@ -249,6 +281,13 @@ class Pipeline:
 
             # Store final results
             result["final_pdb"] = current_pdb
+
+            # Run interface analysis on final structure if enabled
+            if self.config.interface.enabled:
+                logger.info("Running interface analysis...")
+                interface_result = self._analyze_interface(current_pdb)
+                result["interface_analysis"] = interface_result
+
             if result["iterations"]:
                 last_iter = result["iterations"][-1]
                 if "relax_info" in last_iter:
@@ -344,3 +383,77 @@ class Pipeline:
             iter_result["output_pdb"] = pdb_string
 
         return iter_result
+
+    def _analyze_interface(self, pdb_string: str) -> dict:
+        """
+        Run full interface analysis on final structure.
+
+        Args:
+            pdb_string: Final relaxed PDB structure
+
+        Returns:
+            Dictionary with interface analysis results
+        """
+        results = {}
+        cfg = self.config.interface
+
+        # Step 1: Identify interface residues
+        interface_info = identify_interface_residues(
+            pdb_string,
+            distance_cutoff=cfg.distance_cutoff,
+            chain_pairs=cfg.chain_pairs,
+        )
+        results["interface_info"] = interface_info
+        logger.info(f"  {interface_info.summary}")
+
+        if not interface_info.interface_residues:
+            logger.warning(
+                "  No interface residues found - skipping interface analysis"
+            )
+            return results
+
+        # Step 2: Calculate binding energy (expensive)
+        if cfg.calculate_binding_energy:
+            logger.info(
+                "  Calculating binding energy (this may take a while)..."
+            )
+            binding_result = calculate_binding_energy(
+                pdb_string,
+                self.relaxer,
+                chain_pairs=interface_info.chain_pairs,
+                distance_cutoff=cfg.distance_cutoff,
+                relax_separated=cfg.relax_separated_chains,
+            )
+            results["binding_energy"] = binding_result
+            logger.info(
+                f"  ddG = {binding_result.binding_energy:.2f} kcal/mol "
+                f"(Complex: {binding_result.complex_energy:.2f}, "
+                f"Separated: "
+                f"{sum(binding_result.separated_energies.values()):.2f})"
+            )
+
+        # Step 3: Calculate surface area
+        if cfg.calculate_sasa:
+            logger.info("  Calculating buried surface area...")
+            sasa_result = calculate_surface_area(
+                pdb_string,
+                interface_info.interface_residues,
+                probe_radius=cfg.sasa_probe_radius,
+            )
+            results["sasa"] = sasa_result
+            logger.info(
+                f"  Buried SASA: {sasa_result.buried_sasa:.1f} sq. angstroms"
+            )
+
+        # Step 4: Calculate shape complementarity (optional)
+        if cfg.calculate_shape_complementarity:
+            logger.info("  Calculating shape complementarity...")
+            sc_result = calculate_shape_complementarity(
+                pdb_string,
+                interface_info.chain_pairs,
+                interface_info.interface_residues,
+            )
+            results["shape_complementarity"] = sc_result
+            logger.info(f"  Shape complementarity: {sc_result.sc_score:.3f}")
+
+        return results
