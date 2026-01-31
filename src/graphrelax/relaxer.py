@@ -10,6 +10,7 @@ import numpy as np
 from openmm import Platform
 from openmm import app as openmm_app
 from openmm import openmm, unit
+from pdbfixer import PDBFixer
 
 from graphrelax.chain_gaps import (
     detect_chain_gaps,
@@ -46,9 +47,24 @@ class Relaxer:
 
         for i in range(Platform.getNumPlatforms()):
             if Platform.getPlatform(i).getName() == "CUDA":
-                self._use_gpu = True
-                logger.info("OpenMM CUDA platform detected, using GPU")
-                return True
+                try:
+                    platform = Platform.getPlatformByName("CUDA")
+                    system = openmm.System()
+                    system.addParticle(1.0)
+                    integrator = openmm.VerletIntegrator(0.001)
+                    _ctx = openmm.Context(  # noqa: F841
+                        system, integrator, platform
+                    )
+                    del _ctx
+                    self._use_gpu = True
+                    logger.info("OpenMM CUDA platform detected, using GPU")
+                    return True
+                except Exception:
+                    logger.warning(
+                        "OpenMM CUDA platform found but not functional, "
+                        "falling back to CPU"
+                    )
+                    break
 
         self._use_gpu = False
         logger.info("OpenMM CUDA not available, using CPU")
@@ -190,8 +206,6 @@ class Relaxer:
         )
 
         # Use pdbfixer to add missing atoms and terminal groups
-        from pdbfixer import PDBFixer
-
         fixer = PDBFixer(pdbfile=io.StringIO(pdb_string))
         fixer.findMissingResidues()
         fixer.findMissingAtoms()
@@ -397,6 +411,11 @@ class Relaxer:
         """
         Get individual force field energy terms for a structure.
 
+        Uses PDBFixer for robust hydrogen handling and amber14-all.xml for
+        consistency with the relaxation force field. When implicit_solvent
+        is enabled (default), includes GBn2 implicit solvation which adds
+        a CustomGBForce (polar GB solvation + nonpolar SA term).
+
         Args:
             pdb_string: PDB file contents as string
 
@@ -406,15 +425,47 @@ class Relaxer:
         try:
             ENERGY = unit.kilocalories_per_mole
 
-            # Parse PDB
-            pdb_file = io.StringIO(pdb_string)
-            pdb = openmm_app.PDBFile(pdb_file)
+            # Use pdbfixer to handle missing atoms/H
+            fixer = PDBFixer(pdbfile=io.StringIO(pdb_string))
+            fixer.findMissingResidues()
+            fixer.findMissingAtoms()
+            fixer.addMissingAtoms()
 
-            # Create force field and system
-            force_field = openmm_app.ForceField("amber99sb.xml")
+            # Force field selection
+            if self.config.implicit_solvent:
+                force_field = openmm_app.ForceField(
+                    "amber14-all.xml", "implicit/gbn2.xml"
+                )
+            else:
+                force_field = openmm_app.ForceField(
+                    "amber14-all.xml", "amber14/tip3pfb.xml"
+                )
+
+            # Use Modeller to add hydrogens
+            modeller = openmm_app.Modeller(fixer.topology, fixer.positions)
+            modeller.addHydrogens(force_field)
+
+            # Create system
             system = force_field.createSystem(
-                pdb.topology, constraints=openmm_app.HBonds
+                modeller.topology,
+                constraints=openmm_app.HBonds,
+                soluteDielectric=1.0,
+                solventDielectric=78.5,
             )
+
+            # Map force types to names
+            force_names = {
+                "HarmonicBondForce": "bond_energy",
+                "HarmonicAngleForce": "angle_energy",
+                "PeriodicTorsionForce": "dihedral_energy",
+                "NonbondedForce": "nonbonded_energy",
+                "CustomGBForce": "solvation_energy",
+                "CMMotionRemover": None,
+            }
+
+            for i in range(system.getNumForces()):
+                force = system.getForce(i)
+                force.setForceGroup(i)
 
             # Create simulation
             use_gpu = self._check_gpu_available()
@@ -423,49 +474,27 @@ class Relaxer:
             )
             integrator = openmm.LangevinIntegrator(0, 0.01, 0.0)
             simulation = openmm_app.Simulation(
-                pdb.topology, system, integrator, platform
+                modeller.topology, system, integrator, platform
             )
-            simulation.context.setPositions(pdb.positions)
+            simulation.context.setPositions(modeller.positions)
 
             # Get total energy
             state = simulation.context.getState(getEnergy=True)
             total_energy = state.getPotentialEnergy().value_in_unit(ENERGY)
 
-            # Get energy by force group
             energy_breakdown = {"total_energy": total_energy}
-
-            # Map force types to names
-            force_names = {
-                "HarmonicBondForce": "bond_energy",
-                "HarmonicAngleForce": "angle_energy",
-                "PeriodicTorsionForce": "dihedral_energy",
-                "NonbondedForce": "nonbonded_energy",
-            }
-
-            for i in range(system.getNumForces()):
-                force = system.getForce(i)
-                force_type = force.__class__.__name__
-
-                # Set this force to group i
-                force.setForceGroup(i)
-
-            # Recreate simulation with force groups (need new integrator since
-            # the previous one is already bound to a context)
-            integrator = openmm.LangevinIntegrator(0, 0.01, 0.0)
-            simulation = openmm_app.Simulation(
-                pdb.topology, system, integrator, platform
-            )
-            simulation.context.setPositions(pdb.positions)
 
             # Get energy for each force group
             for i in range(system.getNumForces()):
                 force = system.getForce(i)
                 force_type = force.__class__.__name__
 
+                name = force_names.get(force_type, force_type.lower())
+                if name is None:
+                    continue
+
                 state = simulation.context.getState(getEnergy=True, groups={i})
                 energy = state.getPotentialEnergy().value_in_unit(ENERGY)
-
-                name = force_names.get(force_type, force_type.lower())
                 energy_breakdown[name] = energy
 
             return energy_breakdown

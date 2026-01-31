@@ -178,6 +178,60 @@ def ubiquitin_pdb(tmp_path_factory):
 
 
 @pytest.fixture(scope="session")
+def antibody_antigen_pdb(tmp_path_factory):
+    """
+    Download 1VFB (D1.3 Fv antibody + hen egg white lysozyme) for integration
+    testing.
+
+    This is a classic antibody-antigen benchmark:
+    - Chain A: Antibody light chain (VL, 107 residues)
+    - Chain B: Antibody heavy chain (VH, 116 residues)
+    - Chain C: Hen egg white lysozyme (antigen, 129 residues)
+
+    1.8 A resolution, 352 residues, known nM-affinity interaction.
+    The PDB is cleaned identically to ubiquitin_pdb.
+    """
+    import urllib.error
+    import urllib.request
+
+    cache_dir = tmp_path_factory.mktemp("pdb_cache")
+    raw_pdb_path = cache_dir / "1vfb_raw.pdb"
+    pdb_path = cache_dir / "1vfb.pdb"
+
+    url = "https://files.rcsb.org/download/1VFB.pdb"
+    try:
+        urllib.request.urlretrieve(url, raw_pdb_path)
+    except (urllib.error.URLError, urllib.error.HTTPError) as e:
+        pytest.skip(f"Cannot download PDB file from RCSB: {e}")
+
+    clean_lines = []
+    with open(raw_pdb_path) as f:
+        for line in f:
+            if line.startswith("HETATM"):
+                continue
+            if line.startswith("ATOM"):
+                alt_loc = line[16] if len(line) > 16 else " "
+                if alt_loc not in (" ", "A"):
+                    continue
+                if alt_loc == "A":
+                    line = line[:16] + " " + line[17:]
+                clean_lines.append(line)
+            elif line.startswith(("TER", "END", "MODEL", "ENDMDL")):
+                clean_lines.append(line)
+
+    with open(pdb_path, "w") as f:
+        f.writelines(clean_lines)
+
+    return pdb_path
+
+
+@pytest.fixture(scope="session")
+def antibody_antigen_pdb_string(antibody_antigen_pdb):
+    """Read the cleaned 1VFB PDB and return its contents as a string."""
+    return antibody_antigen_pdb.read_text()
+
+
+@pytest.fixture(scope="session")
 def ubiquitin_cif(tmp_path_factory):
     """
     Download 1UBQ (ubiquitin) in CIF format for integration testing.

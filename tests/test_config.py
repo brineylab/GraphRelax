@@ -70,6 +70,7 @@ class TestRelaxConfig:
         assert config.tolerance == 2.39
         assert config.stiffness == 10.0
         assert config.max_outer_iterations == 3
+        assert config.implicit_solvent is True
 
     def test_custom_values(self):
         """Test custom configuration values."""
@@ -78,11 +79,13 @@ class TestRelaxConfig:
             tolerance=1.0,
             stiffness=5.0,
             max_outer_iterations=5,
+            implicit_solvent=False,
         )
         assert config.max_iterations == 1000
         assert config.tolerance == 1.0
         assert config.stiffness == 5.0
         assert config.max_outer_iterations == 5
+        assert config.implicit_solvent is False
 
 
 class TestPipelineConfig:

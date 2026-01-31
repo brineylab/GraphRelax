@@ -485,7 +485,21 @@ def minimize_with_constraints(
     use_gpu = False
     for i in range(Platform.getNumPlatforms()):
         if Platform.getPlatform(i).getName() == "CUDA":
-            use_gpu = True
+            try:
+                platform = Platform.getPlatformByName("CUDA")
+                test_system = openmm.System()
+                test_system.addParticle(1.0)
+                test_integrator = openmm.VerletIntegrator(0.001)
+                _ctx = openmm.Context(  # noqa: F841
+                    test_system, test_integrator, platform
+                )
+                del _ctx
+                use_gpu = True
+            except Exception:
+                logger.warning(
+                    "OpenMM CUDA platform found but not functional, "
+                    "falling back to CPU"
+                )
             break
 
     # Create simulation

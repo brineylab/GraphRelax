@@ -55,6 +55,10 @@ cuda12 = [
     # For GPU acceleration with CUDA 12
     "openmm[cuda12]",
 ]
+cuda13 = [
+    # For GPU acceleration with CUDA 13
+    "openmm[cuda13]",
+]
 dev = [
     "pytest",
     "pytest-cov",

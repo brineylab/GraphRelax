@@ -1,15 +1,11 @@
 """Tests for interface residue identification."""
 
-import pytest
-
 from graphrelax.interface import (
     InterfaceInfo,
-    InterfaceResidue,
     identify_interface_residues,
 )
 
-
-# Two-chain peptide dimer fixture (chains A and B, close enough to form interface)
+# Two-chain peptide dimer (chains A and B, close enough to form interface)
 TWO_CHAIN_PDB = """\
 ATOM      1  N   ALA A   1       0.000   0.000   0.000  1.00  0.00           N
 ATOM      2  CA  ALA A   1       1.458   0.000   0.000  1.00  0.00           C
@@ -116,7 +112,10 @@ class TestIdentifyInterfaceResidues:
         )
 
         # Loose cutoff should find at least as many residues
-        assert result_loose.n_interface_residues >= result_tight.n_interface_residues
+        assert (
+            result_loose.n_interface_residues
+            >= result_tight.n_interface_residues
+        )
 
     def test_specific_chain_pairs(self):
         """Test specifying chain pairs to analyze."""

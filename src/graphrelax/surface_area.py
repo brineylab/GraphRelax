@@ -3,7 +3,7 @@
 import io
 import logging
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 import numpy as np
 from Bio.PDB import PDBParser
@@ -99,7 +99,7 @@ def calculate_surface_area(
 
     Args:
         pdb_string: PDB structure
-        interface_residues: Interface residues from identify_interface_residues()
+        interface_residues: Interface residues from identify_interface_residues
         probe_radius: Water probe radius in angstroms
 
     Returns:
@@ -125,7 +125,7 @@ def calculate_surface_area(
     protein_chains = _get_protein_chains(structure, exclude_ligands=True)
     chain_sasa = {}
 
-    for chain_id, residues in protein_chains.items():
+    for chain_id, _residues in protein_chains.items():
         # Build a temporary structure with just this chain
         chain_pdb_lines = []
         for line in pdb_string.splitlines():
@@ -269,7 +269,9 @@ def calculate_shape_complementarity(
 
     # Estimate interface area from buried SASA (approximation)
     # Use number of interface atoms as a rough proxy
-    interface_area = float(total_points) * 5.0  # ~5 sq A per atom, rough estimate
+    interface_area = (
+        float(total_points) * 5.0
+    )  # ~5 sq A per atom, rough estimate
 
     # Gap volume: average gap * interface area (very rough approximation)
     gap_volume = avg_gap * interface_area

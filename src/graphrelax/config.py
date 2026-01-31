@@ -42,6 +42,9 @@ class RelaxConfig:
     max_outer_iterations: int = 3  # Violation-fixing iterations
     constrained: bool = False  # Use constrained (AmberRelaxation) minimization
     split_chains_at_gaps: bool = True  # Split chains at gaps to prevent closure
+    implicit_solvent: bool = (
+        True  # Use GBn2 implicit solvation for energy evaluation
+    )
     # GPU is auto-detected and used when available
 
 

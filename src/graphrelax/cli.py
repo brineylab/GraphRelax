@@ -216,6 +216,11 @@ Examples:
             "to prevent artificial gap closure during minimization."
         ),
     )
+    relax_group.add_argument(
+        "--no-implicit-solvent",
+        action="store_true",
+        help="Disable GBn2 implicit solvation for energy evaluation.",
+    )
 
     # Scoring options
     score_group = parser.add_argument_group("Scoring options")
@@ -436,6 +441,7 @@ def main(args=None) -> int:
         max_iterations=opts.max_iterations,
         constrained=opts.constrained_minimization,
         split_chains_at_gaps=not opts.no_split_gaps,
+        implicit_solvent=not opts.no_implicit_solvent,
     )
 
     idealize_config = IdealizeConfig(

@@ -44,14 +44,26 @@ class Designer:
 
     def __init__(self, config: DesignConfig):
         self.config = config
-        self.device = torch.device(
-            "cuda" if torch.cuda.is_available() else "cpu"
-        )
+        self.device = self._detect_device()
         self._model: Optional[ProteinMPNN] = None
         self._packer: Optional[Packer] = None
         self._setup_seed()
 
         logger.info(f"Designer initialized with device: {self.device}")
+
+    @staticmethod
+    def _detect_device() -> torch.device:
+        """Detect whether CUDA is available and functional."""
+        if torch.cuda.is_available():
+            try:
+                torch.zeros(1, device="cuda")
+                return torch.device("cuda")
+            except Exception:
+                logger.warning(
+                    "CUDA reported as available but not functional, "
+                    "falling back to CPU"
+                )
+        return torch.device("cpu")
 
     def _setup_seed(self):
         """Set random seeds for reproducibility."""

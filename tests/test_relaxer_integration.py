@@ -130,6 +130,30 @@ class TestEnergyBreakdown:
 
         assert "total_energy" in result
 
+    def test_energy_breakdown_has_solvation(self, small_peptide_pdb_string):
+        """Test that default config includes solvation_energy from GBn2."""
+        from graphrelax.relaxer import Relaxer
+
+        config = RelaxConfig(max_iterations=50, stiffness=10.0)
+        relaxer = Relaxer(config)
+        result = relaxer.get_energy_breakdown(small_peptide_pdb_string)
+
+        assert "solvation_energy" in result
+
+    def test_energy_breakdown_no_solvation_when_disabled(
+        self, small_peptide_pdb_string
+    ):
+        """Test that disabling implicit_solvent removes solvation_energy."""
+        from graphrelax.relaxer import Relaxer
+
+        config = RelaxConfig(
+            max_iterations=50, stiffness=10.0, implicit_solvent=False
+        )
+        relaxer = Relaxer(config)
+        result = relaxer.get_energy_breakdown(small_peptide_pdb_string)
+
+        assert "solvation_energy" not in result
+
 
 @pytest.mark.integration
 class TestRelaxerConfig:
